@@ -1,0 +1,20 @@
+<resources>
+
+    <string name="app_name">VideoCapture</string>
+    <string name="menu_settings">Settings</string>
+    <string name="title_activity_main">DASH Recorder</string>
+    <string name="cam_start_button_text">Start Recording</string>
+    <string name="stop_button_text">Stop Recording</string>
+    <string name="preview_button_text">Go to Video upload</string>
+    <string name="recording_button_text">&lt; Camera</string>
+    <string name="createSteamlet_Upload_text">Segment and Upload</string>
+    <string name="title_video_detail">Video Detail</string>
+    <string name="title_video_list">Videos</string>
+    <string name="no_file_selected_text">No file selected</string>
+    <string name="bit_rate">Bit Rate:</string>
+    <string name="size">Size:</string>
+    <string name="video_dimensions">Video Dimensions:</string>
+    <string name="date_modified">Date Modified:</string>
+    <string name="camera">Camera</string>
+
+</resources>
