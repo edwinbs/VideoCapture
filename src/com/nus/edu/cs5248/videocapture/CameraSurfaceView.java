@@ -1,10 +1,7 @@
 package com.nus.edu.cs5248.videocapture;
 
-import java.io.IOException;
-
 import android.content.Context;
 import android.hardware.Camera;
-import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
@@ -14,6 +11,7 @@ public class CameraSurfaceView extends SurfaceView implements
 	private SurfaceHolder mHolder;
 	private Camera mCamera;
 
+	@SuppressWarnings("deprecation")
 	public CameraSurfaceView(Context context, Camera camera) {
 		super(context);
 		mCamera = camera;

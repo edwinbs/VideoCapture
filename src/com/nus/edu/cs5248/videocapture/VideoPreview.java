@@ -1,27 +1,25 @@
 package com.nus.edu.cs5248.videocapture;
 
 import java.io.File;
-import java.io.FilenameFilter;
-import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.List;
 
-import com.googlecode.mp4parser.authoring.builder.Mp4Builder;
 import com.nus.edu.cs5248.pipeline.SegmenterCallback;
+import com.nus.edu.cs5248.pipeline.Storage;
 import com.nus.edu.cs5248.pipeline.UploadPipeline;
 import com.nus.edu.cs5248.pipeline.VideoUploaderCallback;
 
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Environment;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 public class VideoPreview extends Activity {
@@ -30,8 +28,15 @@ public class VideoPreview extends Activity {
 	private TextView selectedFileTextView;
 	private TextView sizeTextView;
 	private TextView dateModifiedTextView;
+	private TextView uploadStatusTextView;
+	private Button	 segmentUploadButton;
+	
+	private TextView segmentationProgressTextView;
+	private ProgressBar segmentationProgressBar;
+	private TextView uploadProgressTextView;
+	private ProgressBar uploadProgressBar;
 
-	private static final String APP_NAME = "CS5248";
+	private static final String TAG = "VideoPreview";
 	private String[] fileList;
 	private String currentSelectedFileName;
 	private String currentSelectedFilePath;
@@ -44,12 +49,10 @@ public class VideoPreview extends Activity {
 	protected void onCreate(Bundle savedInstanceState) {
 		// TODO Auto-generated method stub
 		super.onCreate(savedInstanceState);
-		setContentView(R.layout.video_preview);
-		listView = (ListView) findViewById(R.id.listViewVideos);
-		statusTextView = (TextView) findViewById(R.id.textViewSummary);
-		selectedFileTextView = (TextView) findViewById(R.id.selectedFileText);
-		sizeTextView = (TextView) findViewById(R.id.size_text);
-		dateModifiedTextView = (TextView) findViewById(R.id.date_modified_text);
+		this.setContentView(R.layout.video_preview);
+		this.setupOutlets();
+		
+		this.initProgressViews();
 
 		if (listView.getAdapter() == null) {
 			// Assign adapter to ListView
@@ -62,14 +65,58 @@ public class VideoPreview extends Activity {
 				currentSelectedFileName = fileList[position];
 				selectedFileTextView.setText(currentSelectedFileName);
 				
-				File file1 = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), APP_NAME);
-				File file2 = new File(file1, currentSelectedFileName);
-				currentSelectedFilePath = file2.getAbsolutePath();
+				File videoFile = new File(Storage.getMediaFolder(true), currentSelectedFileName);
+				currentSelectedFilePath = videoFile.getAbsolutePath();
 				
-				sizeTextView.setText(VideoPreview.humanReadableByteCount(file2.length(), true));
-				dateModifiedTextView.setText(VideoPreview.formatTimestamp(file2.lastModified()));
+				sizeTextView.setText(VideoPreview.humanReadableByteCount(videoFile.length(), true));
+				dateModifiedTextView.setText(VideoPreview.formatTimestamp(videoFile.lastModified()));
+				
+				File segmentsFolder = Storage.getSegmentFolder(videoFile, false);
+				if (!segmentsFolder.exists()) { //Not segmented and not uploaded
+					Log.i(TAG, "Selected video has not been segmented.");
+					uploadStatusTextView.setText("Not uploaded");
+					segmentUploadButton.setVisibility(View.VISIBLE);
+				}
+				else { //Already segmented
+					String[] segments = Storage.getMP4FileList(segmentsFolder);
+					if (segments != null && segments.length > 0) { //Not fully uploaded
+						Log.i(TAG, "Selected video partially uploaded.");
+						uploadStatusTextView.setText("Partially uploaded");
+						segmentUploadButton.setVisibility(View.VISIBLE);
+					} 
+					else { //Uploaded
+						Log.i(TAG, "Selected video has been fully uploaded.");
+						uploadStatusTextView.setText("Uploaded");
+						segmentUploadButton.setVisibility(View.INVISIBLE);
+					}
+				}
 			}
 		});
+	}
+	
+	private void setupOutlets() {
+		this.listView 				= (ListView) findViewById(R.id.listViewVideos);
+		this.statusTextView 		= (TextView) findViewById(R.id.textViewSummary);
+		this.selectedFileTextView 	= (TextView) findViewById(R.id.selectedFileText);
+		this.sizeTextView 			= (TextView) findViewById(R.id.size_text);
+		this.dateModifiedTextView 	= (TextView) findViewById(R.id.date_modified_text);
+		this.uploadStatusTextView 	= (TextView) findViewById(R.id.upload_status_text);
+		this.segmentUploadButton	= (Button) findViewById(R.id.buttonSpiltUpload);
+		
+		this.segmentationProgressTextView 	= (TextView) 	findViewById(R.id.segmentation_progress_text);
+		this.segmentationProgressBar 		= (ProgressBar) findViewById(R.id.segmentation_progress_bar);
+		this.uploadProgressTextView 		= (TextView) 	findViewById(R.id.upload_progress_text);
+		this.uploadProgressBar 				= (ProgressBar) findViewById(R.id.upload_progress_bar);
+	}
+	
+	private void initProgressViews() {
+		this.segmentationProgressBar.setMax(100);
+		this.uploadProgressBar.setMax(100);
+		
+		this.segmentationProgressTextView.setVisibility(View.INVISIBLE);
+		this.segmentationProgressBar.setVisibility(View.INVISIBLE);
+		this.uploadProgressTextView.setVisibility(View.INVISIBLE);
+		this.uploadProgressBar.setVisibility(View.INVISIBLE);
 	}
 
 	public void ButtonSpiltUploadClicked(View view) {
@@ -87,11 +134,24 @@ public class VideoPreview extends Activity {
 		new SegmenterCallback() {
 
 			public void onSegmentCreated(String segmentFilePath,
-					boolean isFinalSegment) {
+					boolean isFinalSegment, int progress) {
 				Log.i("VideoPreview::onSegmentCreated", "Segment created: "
 						+ segmentFilePath + (isFinalSegment ? " (final)" : ""));
+				
 				statusTextView.setText("Segment created: " + segmentFilePath
 						+ (isFinalSegment ? " (final)" : ""));
+				
+				segmentationProgressTextView.setVisibility(View.VISIBLE);
+				
+				if (!isFinalSegment) {
+					segmentationProgressBar.setVisibility(View.VISIBLE);
+					segmentationProgressBar.setProgress(progress);
+					segmentationProgressTextView.setText(String.format("Segmenting (%d%%)...", progress));
+				}
+				else {
+					segmentationProgressBar.setVisibility(View.INVISIBLE);
+					segmentationProgressTextView.setText("Segmentation finished.");
+				}
 			}
 
 		},
@@ -102,15 +162,19 @@ public class VideoPreview extends Activity {
 			}
 
 			public void createVideoStreamletDidFinish(int result, int videoId,
-					int streamletId, boolean isFinalStreamlet) {
+					int streamletId, boolean isFinalStreamlet, long totalTime, long encodeTime) {
 
 				Log.i("VideoPreview::createVideoStreamletDidFinish",
-						"Create streamlet, result=" + result + " video id="
-								+ videoId + " streamlet id=" + streamletId
-								+ (isFinalStreamlet ? "(final)" : ""));
+						"Create streamlet, result=" + result + 
+						" video id=" + videoId +
+						" streamlet id=" + streamletId + 
+						(isFinalStreamlet ? "(final)" : ""));
+				
 				statusTextView.setText("Create streamlet, result=" + result
 						+ " video id=" + videoId + " streamlet id="
-						+ streamletId + (isFinalStreamlet ? "(final)" : ""));
+						+ streamletId + (isFinalStreamlet ? "(final)" : "")
+						+ " total time=" + totalTime + "ms"
+						+ " encode time=" + encodeTime + "ms");
 			}
 
 		});
@@ -130,17 +194,8 @@ public class VideoPreview extends Activity {
 	}
 
 	private String[] getVideoFileList() {
-		File mediaStorageDir = new File(
-				Environment
-						.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-				APP_NAME);
-		FilenameFilter filter = new FilenameFilter() {
-			public boolean accept(File dir, String name) {
-				return name.toLowerCase().endsWith(".mp4");
-			}
-		};
-		String[] fileList = mediaStorageDir.list(filter);
-		return fileList;
+		File mediaStorageDir = Storage.getMediaFolder(true);
+		return Storage.getMP4FileList(mediaStorageDir);
 	}
 	
 	public static String humanReadableByteCount(long bytes, boolean si) {

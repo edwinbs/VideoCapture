@@ -4,6 +4,11 @@ import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
+
+import com.nus.edu.cs5248.pipeline.Storage;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -12,7 +17,6 @@ import android.hardware.Camera;
 import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
 import android.os.Bundle;
-import android.os.Environment;
 import android.util.Log;
 import android.view.Menu;
 import android.view.SurfaceView;
@@ -35,6 +39,8 @@ public class VideoRecorderActivity extends Activity {
 	boolean recording;
 	private TextView statusView;
 	private Button startButton;
+	private Timer	recordingTimer;
+	private long	recordingLength;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -97,9 +103,9 @@ public class VideoRecorderActivity extends Activity {
 				Log.d(APP_NAME, "fail in prepareMediaRecorder()");
 				finish();
 			}
-			statusView.setText("start button click");
 
 			mediaRecorder.start();
+			startRecordingTimer();
 			recording = true;
 			statusView.setText("Recording video...");
 			startButton.setText("Stop");
@@ -117,6 +123,12 @@ public class VideoRecorderActivity extends Activity {
 		if (recording) {
 			mediaRecorder.stop(); // stop the recording
 			releaseMediaRecorder(); // release the MediaRecorder object
+			
+			if (this.recordingTimer != null) {
+				this.recordingTimer.cancel();
+				this.recordingTimer = null;
+			}
+			
 			recording = false;
 
 			statusView.setText("Recording stoped...");
@@ -183,16 +195,7 @@ public class VideoRecorderActivity extends Activity {
 		// To be safe, you should check that the SDCard is mounted
 		// using Environment.getExternalStorageState() before doing this.
 
-		File mediaStorageDir = new File(
-				Environment
-						.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-				APP_NAME);
-		if (!mediaStorageDir.exists()) {
-			if (!mediaStorageDir.mkdirs()) {
-				Log.d(APP_NAME, "failed to create directory");
-				return null;
-			}
-		}
+		File mediaStorageDir = Storage.getMediaFolder(true);
 
 		String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
 				.format(new Date());
@@ -208,5 +211,45 @@ public class VideoRecorderActivity extends Activity {
 		}
 
 		return mediaFile;
+	}
+	
+	private void startRecordingTimer() {
+		if (this.recordingTimer != null)
+			return;
+		
+		this.recordingLength = 0;
+		this.recordingTimer = new Timer(true);
+		this.recordingTimer.schedule(new TimerTask() {
+
+			@Override
+			public void run() {
+				onRecordingTimerTick();
+			}
+			
+		}, 0, 1000);
+	}
+	
+	private void onRecordingTimerTick() {
+		final long h = TimeUnit.SECONDS.toHours(this.recordingLength);
+		final long m = TimeUnit.SECONDS.toMinutes(this.recordingLength) - (TimeUnit.SECONDS.toHours(this.recordingLength)* 60);
+		final long s = TimeUnit.SECONDS.toSeconds(this.recordingLength) - (TimeUnit.SECONDS.toMinutes(this.recordingLength) *60);
+		++this.recordingLength;
+		
+		runOnUiThread(new Runnable() {
+
+			public void run() {
+				updateRecordingLength(h, m, s);
+			}
+			
+		});
+	}
+	
+	//UI THREAD ONLY
+	private void updateRecordingLength(final long h, final long m, final long s) {
+		if (h > 0) {
+			this.statusView.setText(String.format("Recording %02d:%02d:%02d", h, m, s));
+		} else {
+			this.statusView.setText(String.format("Recording %02d:%02d", m, s));
+		}
 	}
 }
