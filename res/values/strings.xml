@@ -7,7 +7,7 @@
     <string name="stop_button_text">Stop Recording</string>
     <string name="preview_button_text">Go to Video upload</string>
     <string name="recording_button_text">&lt; Camera</string>
-    <string name="createSteamlet_Upload_text">Segment and Upload</string>
+    <string name="createSteamlet_Upload_text">Upload</string>
     <string name="title_video_detail">Video Detail</string>
     <string name="title_video_list">Videos</string>
     <string name="no_file_selected_text">No file selected</string>
@@ -16,5 +16,8 @@
     <string name="video_dimensions">Video Dimensions:</string>
     <string name="date_modified">Date Modified:</string>
     <string name="camera">Camera</string>
+    <string name="upload_status">Status:</string>
+    <string name="segmentation_progress">Segmenting&#8230;</string>
+    <string name="upload_progress">Uploading&#8230;</string>
 
 </resources>

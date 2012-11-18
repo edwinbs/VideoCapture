@@ -80,6 +80,7 @@ public enum DashServer {
 	public static final String FILE 				= "file";
 	public static final String VIDEO_STREAMLETS 	= "video_streamlets";
 	public static final String FILENAME 			= "filename";
+	public static final String ENCODE_TIME			= "encoding_time";
 
 	private static final String BASE_URL = "http://pilatus.d1.comp.nus.edu.sg/~a0082245/";
 }
@@ -192,11 +193,23 @@ class CreateVideoStreamletTaskParam {
 
 }
 
+class CreateVideoStreamletTaskResult {
+	public CreateVideoStreamletTaskResult(int resultCode, long totalTime, long encodeTime) {
+		this.resultCode = resultCode;
+		this.totalTime = totalTime;
+		this.encodeTime = encodeTime;
+	}
+	
+	int resultCode;
+	long totalTime;
+	long encodeTime;
+}
+
 class CreateVideoStreamletTask extends
-		AsyncTask<CreateVideoStreamletTaskParam, Integer, Integer> {
+		AsyncTask<CreateVideoStreamletTaskParam, Integer, CreateVideoStreamletTaskResult> {
 
 	@Override
-	protected Integer doInBackground(CreateVideoStreamletTaskParam... param) {
+	protected CreateVideoStreamletTaskResult doInBackground(CreateVideoStreamletTaskParam... param) {
 		final String FN = "CreateVideoStreamTask::doInBackground()";
 
 		this.callback = param[0].callback;
@@ -204,8 +217,14 @@ class CreateVideoStreamletTask extends
 		this.videoId = param[0].videoId;
 		this.isFinalStreamlet = param[0].isFinalStreamlet;
 		this.result = DashResult.FAIL;
+		
+		long encodeTime = 0;
 
 		Log.d(FN, "Start uploading " + this.filePath);
+		
+		long startTime = System.currentTimeMillis();
+		
+		publishProgress(0);
 
 		try {
 			HttpPost post = new HttpPost(
@@ -231,6 +250,7 @@ class CreateVideoStreamletTask extends
 				Log.d(FN, "Response=" + responseString);
 				this.response = new JSONObject(responseString);
 				this.result = this.response.getInt(DashServer.RESULT);
+				encodeTime = this.response.getLong(DashServer.ENCODE_TIME);
 			}
 
 			if (param[0].deleteFile && this.result == DashResult.OK) {
@@ -253,27 +273,24 @@ class CreateVideoStreamletTask extends
 			Log.e(FN, "Exception: " + e.getMessage());
 			e.printStackTrace();
 		}
+		
+		long endTime = System.currentTimeMillis();
+		long totalTime = endTime - startTime;
 
-		return this.result;
+		return new CreateVideoStreamletTaskResult(this.result, totalTime, encodeTime);
 	}
 
 	@Override
-	protected void onPostExecute(Integer result) {
+	protected void onPostExecute(CreateVideoStreamletTaskResult taskResult) {
 		if (this.callback != null) {
-			int streamletId = 0;
-			if (this.response != null) {
-				try {
-					streamletId = this.response.getInt(DashServer.ID);
-				} catch (JSONException e) {
-					Log.e("CreateVideoStreamletTask::onPostExecute()",
-							"JSON exception: " + e.getMessage());
-					streamletId = -1;
-					result = DashResult.MALFORMED_RESPONSE;
-				}
-			}
-
-			this.callback.createVideoStreamletDidFinish(result, videoId,
-					streamletId, isFinalStreamlet);
+			this.callback.createVideoStreamletDidFinish(taskResult.resultCode, (new File(this.filePath)).getName(), 
+					isFinalStreamlet, taskResult.totalTime, taskResult.encodeTime);
+		}
+	}
+	
+	protected void onProgressUpdate(Integer... progress) {
+		if (this.callback != null) {
+			this.callback.createVideoStreamletWillStart(this.filePath);
 		}
 	}
 

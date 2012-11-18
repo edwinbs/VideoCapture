@@ -1,5 +1,6 @@
 package com.nus.edu.cs5248.pipeline;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -52,18 +53,22 @@ class SegmentVideoTaskParam {
 }
 
 class SegmentVideoTaskProgress {
-	static SegmentVideoTaskProgress create(String segmentFilePath, boolean isFinalSegment) {
+	static SegmentVideoTaskProgress create(String segmentFilePath, boolean isFinalSegment, int percent) {
 		SegmentVideoTaskProgress inst = new SegmentVideoTaskProgress();
 		inst.segmentFilePath = segmentFilePath;
 		inst.isFinalSegment = isFinalSegment;
+		inst.percent = percent;
 		return inst;
 	}
 	
 	String segmentFilePath;
 	boolean isFinalSegment;
+	int percent;
 }
 
 class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTaskProgress, Integer> {
+	
+	private static final String TAG = "SegmentVideoTask";
 
 	@Override
 	protected Integer doInBackground(SegmentVideoTaskParam... param) {
@@ -76,7 +81,7 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 	
 	protected void onProgressUpdate(SegmentVideoTaskProgress... progress) {
 		if (this.callback != null) {
-			callback.onSegmentCreated(progress[0].segmentFilePath, progress[0].isFinalSegment);
+			callback.onSegmentCreated(progress[0].segmentFilePath, progress[0].isFinalSegment, progress[0].percent);
 		}
 	}
 	
@@ -91,33 +96,39 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 			if (this.videoTrack == null)
 				return DashResult.INVALID_FORMAT;
 			
+			this.videoTrackDuration = getDuration(this.videoTrack);
+			
 			double startTime = correctTimeToSyncSample(this.videoTrack, 0.0, false);;
 			double endTime   = correctTimeToSyncSample(this.videoTrack, startTime + this.targetSegmentLength, true);
 			int segmentId = 0;
 			
 			while (startTime < endTime) {
-				Log.d("SegmentVideoTask::cropTracks()", "adjusted start=" + startTime + ", end=" + endTime);
+				Log.d(TAG, "adjusted start=" + startTime + ", end=" + endTime);
 				
 				this.movie.setTracks(new LinkedList<Track>());
 				cropNextSegmentWithAdjustedTime(startTime, endTime);
 				
-				String segmentFilePath = this.filePathForSegment(segmentId);
+				String segmentFilePath = Storage.getFileForSegment(new File(this.filePath), segmentId).getPath();
+				Log.d(TAG, "Segment file path=" + segmentFilePath);
 				writeMovieFile(segmentFilePath);
+				
+				int progress = (int) ((100 * endTime) / (this.videoTrackDuration / 100000));
+				Log.d(TAG, "End time=" + endTime + " Track duration=" + this.videoTrackDuration + " Progress=" + progress);
 				
 				//Find next segment's start time and end time
 				//If next segment's start is equal to its end (duration=0), then this is the final segment
 				startTime = endTime;
 				endTime   = correctTimeToSyncSample(this.videoTrack, startTime + this.targetSegmentLength, true);
-		        
-		        publishProgress(SegmentVideoTaskProgress.create(segmentFilePath, startTime == endTime));
+				
+		        publishProgress(SegmentVideoTaskProgress.create(segmentFilePath, (startTime == endTime), progress));
 		        
 				++segmentId;
 			}
 		} catch (FileNotFoundException e) {
-			Log.e("Segmenter::segment()", "File not found: " + e.getMessage());
+			Log.e(TAG, "File not found: " + e.getMessage());
 			return DashResult.FILE_NOT_FOUND;
 		} catch (IOException e) {
-			Log.e("Segmenter::segment()", "IO error: " + e.getMessage());
+			Log.e(TAG, "IO error: " + e.getMessage());
 			return DashResult.IO_ERROR;
 		} finally {
 			try { movieStream.close(); } catch (Exception e) {}
@@ -157,10 +168,6 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 		}
 	}
 	
-    protected String filePathForSegment(int segmentId) {
-    	return this.filePath.replace(".mp4", String.format("_%05d.mp4", segmentId));
-    }
-	
 	protected void writeMovieFile(String filePath) {
 		try {
 			IsoFile out = new DefaultMp4Builder().build(this.movie);
@@ -170,7 +177,7 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 	        fc.close();
 	        fos.close();
 		} catch (IOException e) {
-			Log.d("Segmenter::writeMovieFile()", "IO error: " + e.getMessage());
+			Log.d(TAG, "IO error: " + e.getMessage());
 		}
 	}
 	
@@ -230,5 +237,6 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 	private Movie				movie;
 	private List<Track> 		tracks;
 	private Track				videoTrack;
+	private long				videoTrackDuration;
 	
 }

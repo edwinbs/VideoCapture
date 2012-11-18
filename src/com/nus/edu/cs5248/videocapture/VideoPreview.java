@@ -2,8 +2,12 @@ package com.nus.edu.cs5248.videocapture;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 
+import com.nus.edu.cs5248.pipeline.DashResult;
+import com.nus.edu.cs5248.pipeline.DashServer;
 import com.nus.edu.cs5248.pipeline.SegmenterCallback;
 import com.nus.edu.cs5248.pipeline.Storage;
 import com.nus.edu.cs5248.pipeline.UploadPipeline;
@@ -34,12 +38,16 @@ public class VideoPreview extends Activity {
 	private TextView segmentationProgressTextView;
 	private ProgressBar segmentationProgressBar;
 	private TextView uploadProgressTextView;
+	private TextView uploadFilenameTextView;
 	private ProgressBar uploadProgressBar;
+	private ProgressBar indeterminateProgressBar;
 
 	private static final String TAG = "VideoPreview";
 	private String[] fileList;
 	private String currentSelectedFileName;
 	private String currentSelectedFilePath;
+	
+	private int segmentCount = 0;
 
 	public VideoPreview() {
 		// TODO Auto-generated constructor stub
@@ -62,6 +70,8 @@ public class VideoPreview extends Activity {
 
 			public void onItemClick(AdapterView adapter, View v, int position,
 					long id) {
+				
+				initProgressViews();
 				currentSelectedFileName = fileList[position];
 				selectedFileTextView.setText(currentSelectedFileName);
 				
@@ -76,15 +86,23 @@ public class VideoPreview extends Activity {
 					Log.i(TAG, "Selected video has not been segmented.");
 					uploadStatusTextView.setText("Not uploaded");
 					segmentUploadButton.setVisibility(View.VISIBLE);
+					segmentCount = 0;
 				}
 				else { //Already segmented
 					String[] segments = Storage.getMP4FileList(segmentsFolder);
+					
 					if (segments != null && segments.length > 0) { //Not fully uploaded
+						Arrays.sort(segments);
+						segmentCount = getIdOfSegmentFile(segments[segments.length - 1]) + 1;
+						
 						Log.i(TAG, "Selected video partially uploaded.");
 						uploadStatusTextView.setText("Partially uploaded");
 						segmentUploadButton.setVisibility(View.VISIBLE);
+						segmentUploadButton.setEnabled(true);
 					} 
 					else { //Uploaded
+						segmentCount = 0;
+						
 						Log.i(TAG, "Selected video has been fully uploaded.");
 						uploadStatusTextView.setText("Uploaded");
 						segmentUploadButton.setVisibility(View.INVISIBLE);
@@ -107,19 +125,26 @@ public class VideoPreview extends Activity {
 		this.segmentationProgressBar 		= (ProgressBar) findViewById(R.id.segmentation_progress_bar);
 		this.uploadProgressTextView 		= (TextView) 	findViewById(R.id.upload_progress_text);
 		this.uploadProgressBar 				= (ProgressBar) findViewById(R.id.upload_progress_bar);
+		this.indeterminateProgressBar		= (ProgressBar) findViewById(R.id.indeterminate_progress);
+		this.uploadFilenameTextView			= (TextView)	findViewById(R.id.upload_filename_text);
 	}
 	
 	private void initProgressViews() {
 		this.segmentationProgressBar.setMax(100);
+		this.segmentationProgressBar.setProgress(0);
 		this.uploadProgressBar.setMax(100);
+		this.uploadProgressBar.setProgress(0);
 		
 		this.segmentationProgressTextView.setVisibility(View.INVISIBLE);
 		this.segmentationProgressBar.setVisibility(View.INVISIBLE);
 		this.uploadProgressTextView.setVisibility(View.INVISIBLE);
 		this.uploadProgressBar.setVisibility(View.INVISIBLE);
+		this.indeterminateProgressBar.setVisibility(View.INVISIBLE);
 	}
 
 	public void ButtonSpiltUploadClicked(View view) {
+		this.segmentUploadButton.setEnabled(false);
+		
 		String videoTitle = "";
 
 		int start = currentSelectedFilePath.lastIndexOf('/') + 1;
@@ -135,6 +160,8 @@ public class VideoPreview extends Activity {
 
 			public void onSegmentCreated(String segmentFilePath,
 					boolean isFinalSegment, int progress) {
+				segmentCount = Math.max(segmentCount, getIdOfSegmentFile(segmentFilePath) + 1);
+				
 				Log.i("VideoPreview::onSegmentCreated", "Segment created: "
 						+ segmentFilePath + (isFinalSegment ? " (final)" : ""));
 				
@@ -145,6 +172,7 @@ public class VideoPreview extends Activity {
 				
 				if (!isFinalSegment) {
 					segmentationProgressBar.setVisibility(View.VISIBLE);
+					indeterminateProgressBar.setVisibility(View.VISIBLE);
 					segmentationProgressBar.setProgress(progress);
 					segmentationProgressTextView.setText(String.format("Segmenting (%d%%)...", progress));
 				}
@@ -161,20 +189,60 @@ public class VideoPreview extends Activity {
 			public void createVideoDidFinish(int result, int videoId) {
 			}
 
-			public void createVideoStreamletDidFinish(int result, int videoId,
-					int streamletId, boolean isFinalStreamlet, long totalTime, long encodeTime) {
+			public void createVideoStreamletDidFinish(int result, String streamletFilename, 
+					boolean isFinalStreamlet, long totalTime, long encodeTime) {
 
 				Log.i("VideoPreview::createVideoStreamletDidFinish",
 						"Create streamlet, result=" + result + 
-						" video id=" + videoId +
-						" streamlet id=" + streamletId + 
 						(isFinalStreamlet ? "(final)" : ""));
 				
 				statusTextView.setText("Create streamlet, result=" + result
-						+ " video id=" + videoId + " streamlet id="
-						+ streamletId + (isFinalStreamlet ? "(final)" : "")
+						+ (isFinalStreamlet ? "(final)" : "")
 						+ " total time=" + totalTime + "ms"
 						+ " encode time=" + encodeTime + "ms");
+				
+				if (result == DashResult.OK) {
+					int streamletId = getIdOfSegmentFile(streamletFilename);
+					int progress = (streamletId + 1) * 100 / segmentCount;
+					
+					uploadProgressTextView.setVisibility(View.VISIBLE);
+					
+					if (!isFinalStreamlet) {
+						uploadProgressBar.setVisibility(View.VISIBLE);
+						indeterminateProgressBar.setVisibility(View.VISIBLE);
+						uploadProgressBar.setProgress(progress);
+						uploadProgressTextView.setText(String.format("Uploading (%d%%)...", progress));
+						uploadStatusTextView.setText("Partially uploaded");
+					}
+					else {
+						uploadFilenameTextView.setVisibility(View.INVISIBLE);
+						uploadProgressBar.setVisibility(View.INVISIBLE);
+						indeterminateProgressBar.setVisibility(View.INVISIBLE);
+						segmentUploadButton.setVisibility(View.INVISIBLE);
+						uploadProgressTextView.setText("Upload finished.");
+						uploadStatusTextView.setText("Uploaded");
+					}
+				}
+				else {
+					uploadFilenameTextView.setVisibility(View.INVISIBLE);
+					uploadProgressBar.setVisibility(View.INVISIBLE);
+					indeterminateProgressBar.setVisibility(View.INVISIBLE);
+					uploadProgressTextView.setText("Upload failed (" + result + ")");
+					segmentUploadButton.setEnabled(true);
+				}
+			}
+
+			public void createVideoStreamletWillStart(String streamletFilename) {
+				int streamletId = getIdOfSegmentFile(streamletFilename);
+				int progress = streamletId * 100 / segmentCount;
+				
+				uploadProgressTextView.setVisibility(View.VISIBLE);
+				uploadProgressBar.setVisibility(View.VISIBLE);
+				indeterminateProgressBar.setVisibility(View.VISIBLE);
+				uploadFilenameTextView.setVisibility(View.VISIBLE);
+				uploadProgressTextView.setText(String.format("Uploading (%d%%)...", progress));
+				uploadProgressBar.setProgress(progress);
+				uploadFilenameTextView.setText(streamletFilename);
 			}
 
 		});
@@ -209,6 +277,21 @@ public class VideoPreview extends Activity {
 	public static String formatTimestamp(long timestamp) {
 		SimpleDateFormat dateFormat = new SimpleDateFormat("M/d/yyyy h:mm a");
 		return dateFormat.format(new Date(timestamp));
+	}
+	
+	protected static int getIdOfSegmentFile(String filename) {
+		int startPos = filename.lastIndexOf('_') + 1;
+		int endPos = filename.lastIndexOf('.');
+		String indexString = filename.substring(startPos, endPos);
+		
+		int id = 0;
+		try {
+			id = Integer.parseInt(indexString);
+		} catch (NumberFormatException e) {
+			Log.e(TAG, "Failed to parse integer: " + id);
+		}
+		
+		return id;
 	}
 
 }

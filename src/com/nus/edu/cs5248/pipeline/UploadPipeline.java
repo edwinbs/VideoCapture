@@ -23,14 +23,22 @@ public enum UploadPipeline {
     				uploaderCallback.createVideoDidFinish(result, videoId);
 				
 				//If we cannot get a new video ID from the server, abort
-				if (videoId <= 0 || result != DashResult.OK)
+				if (videoId <= 0)
 					return;
 				
-				segmentVideo(filePath, videoId, segmenterCallback, uploaderCallback);
+				if (result == DashResult.OK) { //New upload
+					segmentVideo(filePath, videoId, segmenterCallback, uploaderCallback);
+				}
+				else if (result == DashResult.ALREADY_EXIST) { //Resuming upload
+					resumeUpload(videoTitle, videoId, uploaderCallback);
+				}
 			}
 
 			public void createVideoStreamletDidFinish(int result,
-					int videoId, int streamletId, boolean isFinalStreamlet) { }
+					String streamletFilename, boolean isFinalStreamlet,
+					long totalTime, long encodeTime) { }
+
+			public void createVideoStreamletWillStart(String streamletFilename) { }
     	});
 			
 	}
@@ -44,9 +52,9 @@ public enum UploadPipeline {
 		//Stage 2: segment the video
 		Segmenter.INSTANCE.segmentVideo(filePath, 3.0, new SegmenterCallback() {
 			
-			public void onSegmentCreated(String segmentFilePath, boolean isFinalSegment) {
+			public void onSegmentCreated(String segmentFilePath, boolean isFinalSegment, int progress) {
 				if (segmenterCallback != null)
-					segmenterCallback.onSegmentCreated(segmentFilePath, isFinalSegment);
+					segmenterCallback.onSegmentCreated(segmentFilePath, isFinalSegment, progress);
 				
 				Log.d("UploadPipeline::segmentVideo()", "Segment: " + segmentFilePath + (isFinalSegment ? " (final)" : ""));
 		    	uploadVideo(segmentFilePath, videoId, isFinalSegment, uploaderCallback);
@@ -66,32 +74,19 @@ public enum UploadPipeline {
 			public void createVideoDidFinish(int result, int videoId) { }
 
 			public void createVideoStreamletDidFinish(int result,
-					int videoId, int streamletId, boolean isFinalStreamlet) {
+					String streamletFilename, boolean isFinalStreamlet, long totalTime, long encodeTime) {
 				
 				if (uploaderCallback != null)
-					uploaderCallback.createVideoStreamletDidFinish(result, videoId, streamletId, isFinalStreamlet);
+					uploaderCallback.createVideoStreamletDidFinish(result, streamletFilename, isFinalStreamlet, totalTime, encodeTime);
 				
 				Log.d("UploadPipeline::uploadVideo()", "Uploaded segment: " + segmentFilePath + " result=" + result + (isFinalStreamlet ? " (final)" : ""));
 			}
-		});
-	}
-	
-	public void uploadSegmentedVideo(final String videoTitle, final VideoUploaderCallback callback) {
-		//Get a new or existing video ID from the server
-		//then decide whether to start from beginning or resume
-		DashServer.INSTANCE.createVideo(videoTitle, new VideoUploaderCallback() {
 
-			public void createVideoDidFinish(int result, int videoId) {
-				if (result == DashResult.ALREADY_EXIST && videoId != 0) {
-					resumeUpload(videoTitle, videoId, callback);
-				} else if (result == DashResult.OK && videoId != 0) {
-					queueSegmentsForUpload(videoTitle, videoId, null, callback);
-				}
+			public void createVideoStreamletWillStart(String streamletFilename) {
+				
+				if (uploaderCallback != null)
+					uploaderCallback.createVideoStreamletWillStart(streamletFilename);
 			}
-
-			public void createVideoStreamletDidFinish(int result, int videoId,
-					int streamletId, boolean isFinalStreamlet) { }
-			
 		});
 	}
 	
@@ -116,16 +111,14 @@ public enum UploadPipeline {
 		
 		Log.d("UploadPipeline::queueSegmentsForUpload", "Exclude list size=" + ((excludeList != null) ? excludeList.size() : 0));
 		
-		boolean isFinalSegment = false;
-		for (int i = 0; !isFinalSegment; i++) {
-			String fileName = String.format("%s_%05d.mp4", videoTitle, i);
-			
-			if (excludeList != null && excludeList.contains(fileName))
+		File segmentsFolder = Storage.getSegmentFolder(videoTitle, false);
+		String[] filenames = Storage.getMP4FileList(segmentsFolder);
+		for (int i = 0; i < filenames.length; ++i) {
+			if (excludeList != null && excludeList.contains(filenames[i]))
 				continue;
 			
-			String filePath = "/sdcard/test/" + fileName;
-			isFinalSegment = !(new File(String.format("/sdcard/test/%s_%05d.mp4", videoTitle, i+1)).exists());
-			
+			boolean isFinalSegment = (i == filenames.length - 1);
+			String filePath = (new File(segmentsFolder, filenames[i])).getPath();
 			uploadVideo(filePath, videoId, isFinalSegment, callback);
 		}
 	}
