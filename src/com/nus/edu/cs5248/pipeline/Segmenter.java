@@ -113,6 +113,9 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 				writeMovieFile(segmentFilePath);
 				
 				int progress = (int) ((100 * endTime) / (this.videoTrackDuration / 100000));
+				if (progress > 100) {
+					progress = 100;
+				}
 				Log.d(TAG, "End time=" + endTime + " Track duration=" + this.videoTrackDuration + " Progress=" + progress);
 				
 				//Find next segment's start time and end time

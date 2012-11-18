@@ -205,6 +205,10 @@ public class VideoPreview extends Activity {
 					int streamletId = getIdOfSegmentFile(streamletFilename);
 					int progress = (streamletId + 1) * 100 / segmentCount;
 					
+					if (progress > 100) {
+						progress = 100;
+					}
+					
 					uploadProgressTextView.setVisibility(View.VISIBLE);
 					
 					if (!isFinalStreamlet) {
