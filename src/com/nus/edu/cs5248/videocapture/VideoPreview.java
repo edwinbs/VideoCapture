@@ -3,11 +3,9 @@ package com.nus.edu.cs5248.videocapture;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 
 import com.nus.edu.cs5248.pipeline.DashResult;
-import com.nus.edu.cs5248.pipeline.DashServer;
 import com.nus.edu.cs5248.pipeline.SegmenterCallback;
 import com.nus.edu.cs5248.pipeline.Storage;
 import com.nus.edu.cs5248.pipeline.UploadPipeline;
@@ -68,6 +66,7 @@ public class VideoPreview extends Activity {
 		}
 		listView.setOnItemClickListener(new OnItemClickListener() {
 
+			@SuppressWarnings("rawtypes") 
 			public void onItemClick(AdapterView adapter, View v, int position,
 					long id) {
 				

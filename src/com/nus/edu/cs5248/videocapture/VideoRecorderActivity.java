@@ -4,8 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 
 import com.nus.edu.cs5248.pipeline.Storage;
@@ -17,6 +15,7 @@ import android.hardware.Camera;
 import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.Menu;
 import android.view.SurfaceView;
@@ -28,9 +27,10 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 
 public class VideoRecorderActivity extends Activity {
-	private static final int MEDIA_TYPE_IMAGE = 1;
 	private static final int MEDIA_TYPE_VIDEO = 2;
-	private static final String APP_NAME = "CS5248";
+	
+	private static final String TAG = "VideoRecorderActivity";
+	private static final String FILE_PREFIX = "cs5248";
 
 	private Camera myCamera;
 	private SurfaceView surfaceView;
@@ -39,7 +39,7 @@ public class VideoRecorderActivity extends Activity {
 	boolean recording;
 	private TextView statusView;
 	private Button startButton;
-	private Timer	recordingTimer;
+	private Handler	recordingTimerHandler;
 	private long	recordingLength;
 
 	@Override
@@ -67,6 +67,7 @@ public class VideoRecorderActivity extends Activity {
 		frameLayout.addView(surfaceView);
 
 		startButton = (Button) findViewById(R.id.buttonStrat);
+		this.recordingTimerHandler = new Handler();
 	}
 
 	@Override
@@ -100,14 +101,14 @@ public class VideoRecorderActivity extends Activity {
 			releaseCamera();
 
 			if (!prepareMediaRecorder()) {
-				Log.d(APP_NAME, "fail in prepareMediaRecorder()");
+				Log.d(TAG, "fail in prepareMediaRecorder()");
 				finish();
 			}
 
 			mediaRecorder.start();
 			startRecordingTimer();
 			recording = true;
-			statusView.setText("Recording video...");
+			statusView.setText("Starting recording...");
 			startButton.setText("Stop");
 		} else {
 			stopRecording();
@@ -124,14 +125,11 @@ public class VideoRecorderActivity extends Activity {
 			mediaRecorder.stop(); // stop the recording
 			releaseMediaRecorder(); // release the MediaRecorder object
 			
-			if (this.recordingTimer != null) {
-				this.recordingTimer.cancel();
-				this.recordingTimer = null;
-			}
+			this.recordingTimerHandler.removeCallbacks(this.recordingTimerUpdater);
 			
 			recording = false;
 
-			statusView.setText("Recording stoped...");
+			statusView.setText("Recording Stopped");
 			startButton.setText("Record");
 		}
 	}
@@ -164,11 +162,11 @@ public class VideoRecorderActivity extends Activity {
 			mediaRecorder.prepare();
 		} catch (IllegalStateException e) {
 			releaseMediaRecorder();
-			Log.d(APP_NAME, e.getMessage());
+			Log.e(TAG, e.getMessage());
 			return false;
 		} catch (IOException e) {
 			releaseMediaRecorder();
-			Log.d(APP_NAME, e.getMessage());
+			Log.e(TAG, e.getMessage());
 			return false;
 		}
 		return true;
@@ -199,34 +197,18 @@ public class VideoRecorderActivity extends Activity {
 
 		String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss")
 				.format(new Date());
-		File mediaFile;
-		if (type == MEDIA_TYPE_IMAGE) {
-			mediaFile = new File(mediaStorageDir.getPath() + File.separator
-					+ "IMG_" + timeStamp + ".jpg");
-		} else if (type == MEDIA_TYPE_VIDEO) {
-			mediaFile = new File(mediaStorageDir.getPath() + File.separator
-					+ APP_NAME + "_" + timeStamp + ".mp4");
-		} else {
-			return null;
+		
+		if (type == MEDIA_TYPE_VIDEO) {
+			return new File(mediaStorageDir.getPath() + File.separator
+					+ FILE_PREFIX + "_" + timeStamp + ".mp4");
 		}
-
-		return mediaFile;
+		
+		return null;
 	}
 	
 	private void startRecordingTimer() {
-		if (this.recordingTimer != null)
-			return;
-		
 		this.recordingLength = 0;
-		this.recordingTimer = new Timer(true);
-		this.recordingTimer.schedule(new TimerTask() {
-
-			@Override
-			public void run() {
-				onRecordingTimerTick();
-			}
-			
-		}, 0, 1000);
+		this.recordingTimerUpdater.run();
 	}
 	
 	private void onRecordingTimerTick() {
@@ -234,14 +216,7 @@ public class VideoRecorderActivity extends Activity {
 		final long m = TimeUnit.SECONDS.toMinutes(this.recordingLength) - (TimeUnit.SECONDS.toHours(this.recordingLength)* 60);
 		final long s = TimeUnit.SECONDS.toSeconds(this.recordingLength) - (TimeUnit.SECONDS.toMinutes(this.recordingLength) *60);
 		++this.recordingLength;
-		
-		runOnUiThread(new Runnable() {
-
-			public void run() {
-				updateRecordingLength(h, m, s);
-			}
-			
-		});
+		updateRecordingLength(h, m, s);
 	}
 	
 	//UI THREAD ONLY
@@ -252,4 +227,11 @@ public class VideoRecorderActivity extends Activity {
 			this.statusView.setText(String.format("Recording %02d:%02d", m, s));
 		}
 	}
+	
+	Runnable recordingTimerUpdater = new Runnable() {
+		public void run() {
+			onRecordingTimerTick();
+			recordingTimerHandler.postDelayed(recordingTimerUpdater, 1000);
+		}
+	};
 }

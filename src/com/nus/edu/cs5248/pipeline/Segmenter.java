@@ -87,6 +87,7 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 	
 	protected Integer segmentVideo() {
 		FileInputStream movieStream = null;
+		long timerStart = System.currentTimeMillis();
 		
 		try {
 			movieStream = new FileInputStream(this.filePath);
@@ -136,6 +137,9 @@ class SegmentVideoTask extends AsyncTask <SegmentVideoTaskParam, SegmentVideoTas
 		} finally {
 			try { movieStream.close(); } catch (Exception e) {}
 		}
+		
+		long timerEnd = System.currentTimeMillis();
+		Log.i(TAG, "Segmentation finished in " + (timerEnd - timerStart) + "ms");
 		
 		return DashResult.OK;
 	}
